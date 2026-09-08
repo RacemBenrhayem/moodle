@@ -52,6 +52,31 @@ class external_service_authorised_user_settings_form extends moodleform {
         $this->set_data($data);
     }
 
+    /**
+     * Validate the submitted data.
+     *
+     * @param array $data Submitted data.
+     * @param array $files Submitted files.
+     * @return array Validation errors.
+     */
+    #[\Override]
+    public function validation($data, $files) {
+        $errors = parent::validation($data, $files);
+
+        if (!empty($data['iprestriction'])) {
+            $invalidentries = \core\ip_utils::get_invalid_subnet_list_entries($data['iprestriction']);
+            if ($invalidentries) {
+                $errors['iprestriction'] = get_string(
+                    'iprestrictioninvalid',
+                    'webservice',
+                    implode(get_string('listsep', 'core_langconfig') . ' ', $invalidentries),
+                );
+            }
+        }
+
+        return $errors;
+    }
+
 }
 
 class external_service_form extends moodleform {

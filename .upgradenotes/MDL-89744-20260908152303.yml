@@ -1,0 +1,11 @@
+issueNumber: MDL-89744
+notes:
+  core:
+    - message: >-
+        New `\core\ip_utils::get_invalid_subnet_list_entries()` method, which
+        returns the entries of a comma separated subnet list that
+        `address_in_subnet()` is unable to understand. It is intended for
+        validating fields whose values are consumed by that function, such as
+        the IP restriction of a web service token, where an unparseable entry
+        silently rejects every request instead of restricting them.
+      type: improved
