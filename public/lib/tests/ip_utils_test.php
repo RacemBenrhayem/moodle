@@ -16,6 +16,8 @@
 
 namespace core;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+
 /**
  * This tests the static helper functions contained in the class '\core\ip_utils'.
  *
@@ -550,5 +552,112 @@ final class ip_utils_test extends \basic_testcase {
      */
     public function test_normalize_internet_address_list(string $input, string $expected): void {
         $this->assertEquals($expected, \core\ip_utils::normalize_internet_address_list($input));
+    }
+
+    /**
+     * Data provider for test_get_invalid_subnet_list_entries().
+     *
+     * Every entry accepted here must be one which address_in_subnet() is able to match against, and
+     * every entry rejected here must be one which it can never match.
+     *
+     * @return array
+     */
+    public static function get_invalid_subnet_list_entries_provider(): array {
+        return [
+            // Full addresses.
+            'Full IPv4 address' => ['1.2.3.4', []],
+            'Full IPv4 address with leading zeros' => ['192.168.001.1', []],
+            'Full IPv6 address' => ['fe80::1', []],
+            'Loopback IPv6 address' => ['::1', []],
+            'Uncompressed IPv6 address' => ['1:2:3:4:5:6:7:8', []],
+            'IPv4 octet out of range' => ['1.2.3.256', ['1.2.3.256']],
+            'IPv4 address with an empty group' => ['192..168', ['192..168']],
+            'IPv4 address with five groups' => ['192.168.5.5.6', ['192.168.5.5.6']],
+            'IPv6 address with nine groups' => ['1:2:3:4:5:6:7:8:9', ['1:2:3:4:5:6:7:8:9']],
+            'IPv6 address with a non hex group' => ['gggg::1', ['gggg::1']],
+
+            // Partial address prefixes.
+            'One group IPv4 prefix' => ['192', []],
+            'Two group IPv4 prefix' => ['192.168', []],
+            'Three group IPv4 prefix' => ['192.168.5', []],
+            'IPv4 prefix with a trailing dot' => ['192.168.', []],
+            'Full IPv4 address with a trailing dot' => ['192.168.5.5.', []],
+            'IPv4 prefix with a group out of range' => ['999.1', ['999.1']],
+            'Two group IPv6 prefix' => ['baba:baba', []],
+            'One group IPv6 prefix with a trailing colon' => ['baba:', []],
+            // The address_in_subnet() function cannot match a longer prefix ending in a colon, nor the
+            // compressed form of an address whose last group is empty.
+            'Two group IPv6 prefix with a trailing colon' => ['baba:baba:', ['baba:baba:']],
+            'Compressed IPv6 address ending in a colon' => ['fe80::', ['fe80::']],
+            'Unspecified IPv6 address' => ['::', ['::']],
+
+            // CIDR notation.
+            'IPv4 CIDR' => ['1.2.3.0/24', []],
+            'IPv4 CIDR matching everything' => ['0.0.0.0/0', []],
+            'IPv4 CIDR matching a single address' => ['1.2.3.4/32', []],
+            'IPv4 CIDR with whitespace around the mask' => ['1.2.3.0 / 24', []],
+            'IPv4 CIDR with an out of range mask' => ['1.2.3.4/33', ['1.2.3.4/33']],
+            'IPv4 CIDR with a non numeric mask' => ['1.2.3.4/abc', ['1.2.3.4/abc']],
+            'IPv6 CIDR' => ['fe80::/64', []],
+            'IPv6 CIDR uncompressed' => ['fe80:0:0:0:0:0:0:0/16', []],
+            'IPv6 CIDR with an out of range mask' => ['fe80::/129', ['fe80::/129']],
+
+            // Last group ranges.
+            'IPv4 range' => ['1.2.3.10-20', []],
+            'IPv4 range with whitespace around the separator' => ['1.2.3.10 - 20', []],
+            'IPv4 range of a single address' => ['1.2.3.4-4', []],
+            'IPv4 range which ends before it starts' => ['1.2.3.20-10', ['1.2.3.20-10']],
+            'IPv4 range with an out of range end' => ['1.2.3.10-300', ['1.2.3.10-300']],
+            'IPv6 range' => ['fe80::1111-bbbb', []],
+            'IPv6 range with a compressed start' => ['fe80::-ffff', []],
+            'IPv6 range which ends before it starts' => ['fe80::bbbb-1111', ['fe80::bbbb-1111']],
+            'IPv6 range with an over long end' => ['fe80::-fffff', ['fe80::-fffff']],
+            'IPv6 range with a non hex end' => ['fe80::-gggg', ['fe80::-gggg']],
+            'IPv6 range with an empty end' => ['fe80::1111-', ['fe80::1111-']],
+            'IPv6 range with two separators' => ['fe80::1-2-3', ['fe80::1-2-3']],
+
+            // Values which address_in_subnet() cannot understand at all.
+            'Domain name' => ['services.example.com', ['services.example.com']],
+            'Host name' => ['localhost', ['localhost']],
+            'Wildcard domain name' => ['*.example.com', ['*.example.com']],
+            'URL' => ['http://1.2.3.4', ['http://1.2.3.4']],
+            'Address followed by a comment' => ['1.2.3.4 # note', ['1.2.3.4 # note']],
+            'Semicolon separated list' => ['1.2.3.4;5.6.7.8', ['1.2.3.4;5.6.7.8']],
+
+            // Lists, whitespace and empty entries.
+            'List of valid entries' => ['127.0.0.1,192.168.0.0/16,fe80::1111-bbbb', []],
+            'List with surrounding whitespace' => [' 127.0.0.1 , 10.0.0.0/8 ', []],
+            'List with a trailing separator' => ['127.0.0.1,', []],
+            'List with a leading separator' => [',127.0.0.1', []],
+            'Empty list' => ['', []],
+            'List of only whitespace' => ['   ', []],
+            'List with one invalid entry' => ['127.0.0.1,nope', ['nope']],
+            'List with several invalid entries' => ['nope,127.0.0.1,also bad', ['nope', 'also bad']],
+            'Invalid entries are reported trimmed' => [' nope , 127.0.0.1 ', ['nope']],
+        ];
+    }
+
+    /**
+     * Test that the entries of a subnet list which address_in_subnet() cannot understand are returned.
+     *
+     * @param string $subnetlist The list to validate.
+     * @param array $expected The entries expected to be reported as invalid.
+     */
+    #[DataProvider('get_invalid_subnet_list_entries_provider')]
+    public function test_get_invalid_subnet_list_entries(string $subnetlist, array $expected): void {
+        $this->assertEquals($expected, \core\ip_utils::get_invalid_subnet_list_entries($subnetlist));
+    }
+
+    /**
+     * Test that a separator other than a comma can be used.
+     */
+    public function test_get_invalid_subnet_list_entries_separator(): void {
+        $this->assertEquals([], \core\ip_utils::get_invalid_subnet_list_entries("127.0.0.1\n10.0.0.0/8", "\n"));
+        $this->assertEquals(['nope'], \core\ip_utils::get_invalid_subnet_list_entries("127.0.0.1\nnope", "\n"));
+        // A comma is not a separator here, so the whole entry is a single invalid value.
+        $this->assertEquals(
+            ['127.0.0.1,10.0.0.1'],
+            \core\ip_utils::get_invalid_subnet_list_entries('127.0.0.1,10.0.0.1', "\n"),
+        );
     }
 }

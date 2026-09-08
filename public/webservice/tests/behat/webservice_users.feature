@@ -29,6 +29,15 @@ Feature: Web service user settings
     Then I should see "User One" in the ".alloweduserlist" "css_element"
     And I should see "1@example.org" in the ".alloweduserlist" "css_element"
     And I should see "Kermit" in the ".alloweduserlist" "css_element"
+    # An IP restriction which could never match any address is rejected.
+    And I click on "User One" "link" in the ".alloweduserlist" "css_element"
+    And I set the field "IP restriction" to "services.example.com"
+    And I press "Update"
+    And I should see "These IP restrictions are invalid: services.example.com" in the "IP restriction" "form_row"
+    # A valid restriction is accepted.
+    And I set the field "IP restriction" to "127.0.0.1,192.168.0.0/16"
+    And I press "Update"
+    And I should not see "These IP restrictions are invalid"
 
   @javascript
   Scenario: Add a function to a web service
