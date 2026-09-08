@@ -25,6 +25,7 @@
 
 namespace core_webservice;
 
+use core\ip_utils;
 use core_user;
 use DateInterval;
 use DateTime;
@@ -92,6 +93,7 @@ class token_form extends \moodleform {
         $mform->setType('service', PARAM_INT);
 
         $mform->addElement('text', 'iprestriction', get_string('iprestriction', 'webservice'));
+        $mform->addHelpButton('iprestriction', 'iprestriction', 'webservice');
         $mform->setType('iprestriction', PARAM_RAW_TRIMMED);
 
         $mform->addElement('date_selector', 'validuntil',
@@ -124,6 +126,17 @@ class token_form extends \moodleform {
 
         if ($DB->get_field('user', 'suspended', ['id' => $data['user']], MUST_EXIST)) {
             $errors['user'] = get_string('suspended', 'core') . ' - ' . get_string('forbiddenwsuser', 'core_webservice');
+        }
+
+        if (!empty($data['iprestriction'])) {
+            $invalidentries = ip_utils::get_invalid_subnet_list_entries($data['iprestriction']);
+            if ($invalidentries) {
+                $errors['iprestriction'] = get_string(
+                    'iprestrictioninvalid',
+                    'webservice',
+                    implode(get_string('listsep', 'core_langconfig') . ' ', $invalidentries),
+                );
+            }
         }
 
         return $errors;

@@ -21,6 +21,10 @@ Feature: Manage external services tokens
     And I set the field "Name" to "Webservice1"
     And I set the field "User" to "Firstname1 Lastname1"
     And I set the field "Service" to "Moodle mobile web service"
+    # An IP restriction which could never match any address is rejected.
+    And I set the field "IP restriction" to "services.example.com"
+    And I press "Save changes"
+    And I should see "These IP restrictions are invalid: services.example.com" in the "IP restriction" "form_row"
     And I set the field "IP restriction" to "127.0.0.1"
     When I press "Save changes"
     Then the following should exist in the "generaltable" table:

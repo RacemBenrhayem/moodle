@@ -353,4 +353,103 @@ final class ip_utils {
 
         return implode($separator, $addresses);
     }
+
+    /**
+     * Returns the entries of a subnet list which cannot be understood by {@see address_in_subnet()}.
+     *
+     * This is intended to validate the values of fields whose only consumer is address_in_subnet(),
+     * such as the IP restriction of a web service token. An entry which that function cannot parse
+     * can never match any address, so it silently rejects every request rather than restricting them.
+     *
+     * The accepted syntax is the one address_in_subnet() implements:
+     * - a full address, e.g. 231.54.211.1 or fe80::ffff
+     * - a partial address prefix, e.g. 231.54, 231.54. or fe80:1234
+     * - CIDR notation, e.g. 231.54.211.0/20 or fe80::/64
+     * - a range applying to the last group, e.g. 231.54.211.10-20 or fe80::1111-bbbb
+     *
+     * Empty entries are ignored, because address_in_subnet() skips them. Domain names are rejected,
+     * as are comments, neither of which that function understands.
+     *
+     * @param string $subnetlist a list of addresses, address ranges or subnets.
+     * @param string $separator the separator used within the list.
+     * @return array the entries which cannot be understood, trimmed, in the order they were given.
+     */
+    public static function get_invalid_subnet_list_entries(string $subnetlist, string $separator = ','): array {
+        $invalidentries = [];
+
+        foreach (explode($separator, $subnetlist) as $entry) {
+            $entry = trim($entry);
+
+            if ($entry === '') {
+                // An empty entry is skipped by address_in_subnet() rather than treated as an error.
+                continue;
+            }
+
+            if (!self::is_subnet_list_entry($entry)) {
+                $invalidentries[] = $entry;
+            }
+        }
+
+        return $invalidentries;
+    }
+
+    /**
+     * Whether a single subnet list entry can be understood by {@see address_in_subnet()}.
+     *
+     * @param string $entry a single, trimmed entry from a subnet list.
+     * @return bool true if address_in_subnet() is able to match addresses against this entry.
+     */
+    private static function is_subnet_list_entry(string $entry): bool {
+        // The address_in_subnet() function trims whitespace around the CIDR mask and range separator.
+        $entry = preg_replace('/\s*([\/-])\s*/', '$1', $entry);
+
+        if (str_contains($entry, '/')) {
+            return self::is_ipv4_range($entry) || self::is_ipv6_range($entry);
+        }
+
+        if (str_contains($entry, '-')) {
+            if (self::is_ipv4_range($entry) || self::is_ipv6_range($entry)) {
+                return true;
+            }
+
+            // The address_in_subnet() function expands the start address before splitting off its
+            // last group, so a compressed IPv6 start such as fe80::-ffff is understood even though
+            // is_ipv6_range() does not recognise it.
+            $parts = explode('-', $entry);
+            if (count($parts) !== 2) {
+                return false;
+            }
+            if (!self::is_ipv6_address($parts[0]) || preg_match('/^[0-9a-f]{1,4}$/i', $parts[1]) !== 1) {
+                return false;
+            }
+            $laststartgroup = hexdec(substr(bin2hex(inet_pton($parts[0])), -4));
+
+            return hexdec($parts[1]) >= $laststartgroup;
+        }
+
+        if (str_ends_with($entry, ':')) {
+            // Only a single group followed by a colon is understood as an IPv6 prefix.
+            return preg_match('/^[0-9a-f]{1,4}:$/i', $entry) === 1;
+        }
+
+        if (str_contains($entry, ':')) {
+            // A full IPv6 address, or a prefix of up to eight groups.
+            return self::is_ipv6_address($entry)
+                || preg_match('/^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){1,7}$/i', $entry) === 1;
+        }
+
+        // A full IPv4 address, or a prefix of up to four groups with an optional trailing dot.
+        // Note this is deliberately more permissive than is_ipv4_address(), which rejects the
+        // leading zeros that address_in_subnet() accepts.
+        if (preg_match('/^\d{1,3}(\.\d{1,3}){0,3}\.?$/', $entry) !== 1) {
+            return false;
+        }
+        foreach (explode('.', rtrim($entry, '.')) as $group) {
+            if ((int)$group > 255) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
